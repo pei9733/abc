@@ -443,6 +443,170 @@ Amap_Lib_t * Amap_ParseTokens( Vec_Ptr_t * vTokens, int fVerbose )
         printf( "Warning: Detected %d multi-output gates (for example, \"%s\").\n", Count, pMoGate );
     return p;
 }
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+Amap_Lib_t * Cad_Amap_ParseTokens( Vec_Ptr_t * vTokens, int fVerbose )
+{
+    Amap_Lib_t * p;
+    Amap_Gat_t * pGate, * pPrev;
+    Amap_Pin_t * pPin;
+    char * pToken, * pMoGate = NULL;
+    int i, nPins, iPos = 0, Count = 0;
+    p = Amap_LibAlloc();
+    pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+    do 
+    {
+        if ( strcmp( pToken, AMAP_STRING_GATE ) )
+        {
+            Amap_LibFree( p );
+            printf( "The first line should begin with %s.\n", AMAP_STRING_GATE );
+            return NULL;
+        }
+        // start gate
+        nPins = Amap_ParseCountPins( vTokens, iPos );
+        pGate = Amap_ParseGateAlloc( p->pMemGates, nPins );
+        memset( pGate, 0, sizeof(Amap_Gat_t) );
+        pGate->Id = Vec_PtrSize( p->vGates );
+        Vec_PtrPush( p->vGates, pGate );
+        pGate->pLib = p;
+        pGate->nPins = nPins;
+        // read gate
+        pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+        pGate->pName = Amap_ParseStrsav( p->pMemGates, pToken );    
+        pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+        pGate->dArea = atof( pToken );
+        pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+        pGate->pOutName = Amap_ParseStrsav( p->pMemGates, pToken ); 
+        pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+        iPos = Amap_CollectFormulaTokens( vTokens, pToken, iPos );
+        pGate->pForm = Amap_ParseStrsav( p->pMemGates, pToken ); 
+        // read pins
+        float attri1_tmp = -1.0, attri2_tmp = -1.0, attri4_tmp = -1.0, attri5_tmp = -1.0, attri7_tmp = -1.0;
+        int attri3_tmp = -1;
+        Amap_GateForEachPin( pGate, pPin )
+        {
+            // printf("im here\n");
+            pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+            if ( strcmp( pToken, AMAP_STRING_PIN ) )
+            {
+                Amap_LibFree( p );
+                printf( "Cannot parse gate %s.\n", pGate->pName );
+                return NULL;
+            }
+            // read pin
+            pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+            pPin->pName = Amap_ParseStrsav( p->pMemGates, pToken );  
+            // printf("%d\n", pPin);
+            // printf("pPin->pName : 0x%08x\n", pPin->pName);
+            pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+            if ( strcmp( pToken, AMAP_STRING_UNKNOWN ) == 0 )
+                pPin->Phase = AMAP_PHASE_UNKNOWN;
+            else if ( strcmp( pToken, AMAP_STRING_INV ) == 0 )
+                pPin->Phase = AMAP_PHASE_INV;
+            else if ( strcmp( pToken, AMAP_STRING_NONINV ) == 0 )
+                pPin->Phase = AMAP_PHASE_NONINV;
+            else 
+            {
+                Amap_LibFree( p );
+                printf( "Cannot read phase of pin %s of gate %s\n", pPin->pName, pGate->pName );
+                return NULL;
+            }
+            pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+            if(strcmp(pToken, ";") != 0){
+                attri1_tmp = atof( pToken );
+                // pGate->attri1 = atof( pToken );
+                pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+                attri2_tmp = atof( pToken );
+                // pGate->attri2 = atof( pToken );
+                pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+                attri3_tmp = atoi( pToken );
+                // pGate->attri3 = atoi( pToken );
+                pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+                attri4_tmp = atof( pToken );
+                // pGate->attri4 = atof( pToken );
+                pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+                attri5_tmp = atof( pToken );
+                // pGate->attri5 = atof( pToken );
+                pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+                attri7_tmp = atof( pToken );
+                // pGate->attri7 = atof( pToken );
+            }
+
+            // pPin->dLoadInput = atof( pToken );
+            pPin->dLoadInput = 1;
+            // pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+            // pPin->dLoadMax = atof( pToken );
+            pPin->dLoadMax = 999;
+            // pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+            // pPin->dDelayBlockRise = atof( pToken );
+            pPin->dDelayBlockRise = 0.9;
+            // pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+            // pPin->dDelayFanoutRise = atof( pToken );
+            pPin->dDelayFanoutRise = 0.3;
+            // pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+            // pPin->dDelayBlockFall = atof( pToken );
+            pPin->dDelayBlockFall =  0.9;
+            // pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+            // pPin->dDelayFanoutFall = atof( pToken );
+            pPin->dDelayFanoutFall =  0.3;
+            // if ( pPin->dDelayBlockRise > pPin->dDelayBlockFall )
+            //     pPin->dDelayBlockMax = pPin->dDelayBlockRise;
+            // else
+            //     pPin->dDelayBlockMax = pPin->dDelayBlockFall;
+            pPin->dDelayBlockMax = 0.9;
+        }
+        pGate->attri1 = attri1_tmp;
+        pGate->attri2 = attri2_tmp;
+        pGate->attri3 = attri3_tmp;
+        pGate->attri4 = attri4_tmp;
+        pGate->attri5 = attri5_tmp;
+        pGate->attri7 = attri7_tmp;
+        // printf("pGate->pName : %s\n", pGate->pName);
+        // printf("%d\n", pGate->Pins);
+        // pGate->Pins;
+        // pGate->Pins->pName;
+        // printf("pGate->Pins->pName : %s\n", pGate->Pins->pName);
+
+        // printf("pGate->nPins : %d\n", pGate->nPins);
+        // fix the situation when all pins are represented as one
+        if ( pGate->nPins == 1 && !strcmp( pGate->Pins->pName, "*" ) )
+        {
+            pGate = Amap_ParseGateWithSamePins( pGate );
+            Vec_PtrPop( p->vGates );
+            Vec_PtrPush( p->vGates, pGate );
+        }
+        pToken = (char *)Vec_PtrEntry(vTokens, iPos++);
+//printf( "Finished reading gate %s (%s)\n", pGate->pName, pGate->pOutName );
+    }
+    while ( strcmp( pToken, ".end" ) );
+
+    // check if there are gates with identical names
+    pPrev = NULL;
+    Amap_LibForEachGate( p, pGate, i )
+    {
+        if ( pPrev && !strcmp(pPrev->pName, pGate->pName) )
+        {
+            pPrev->pTwin = pGate, pGate->pTwin = pPrev;
+//            printf( "Warning: Detected multi-output gate \"%s\".\n", pGate->pName );
+            if ( pMoGate == NULL )
+                pMoGate = pGate->pName;
+            Count++;
+        }
+        pPrev = pGate;
+    }
+    if ( Count )
+        printf( "Warning: Detected %d multi-output gates (for example, \"%s\").\n", Count, pMoGate );
+    return p;
+}
 
 /**Function*************************************************************
 
@@ -461,7 +625,8 @@ Amap_Lib_t * Amap_LibReadBuffer( char * pBuffer, int fVerbose )
     Vec_Ptr_t * vTokens;
     Amap_RemoveComments( pBuffer, NULL, NULL );
     vTokens = Amap_DeriveTokens( pBuffer );
-    pLib = Amap_ParseTokens( vTokens, fVerbose );
+    // pLib = Amap_ParseTokens( vTokens, fVerbose );
+    pLib = Cad_Amap_ParseTokens( vTokens, fVerbose );
     if ( pLib == NULL )
     {
         Vec_PtrFree( vTokens );
