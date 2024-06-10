@@ -132,6 +132,15 @@ struct  Mio_GateStruct_t_
     // float              attri4;
     // float              attri5;
     // float              attri7;
+
+    // cad attributes
+    float*             cad_attris;
+    // float              attri1;
+    // float              attri2;
+    // int                attri3;
+    // float              attri4;
+    // float              attri5;
+    // float              attri7;
 };
 
 struct  Mio_PinStruct_t_
