@@ -88,6 +88,7 @@ void Mio_GateDelete( Mio_Gate_t * pGate )
     Mio_Pin_t * pPin, * pPin2;
     if ( pGate->nInputs > 6 )
         ABC_FREE( pGate->pTruth );
+    free(pGate->cad_attris);
     Vec_IntFreeP( &pGate->vExpr );
     ABC_FREE( pGate->pOutName );
     ABC_FREE( pGate->pName );
@@ -750,9 +751,66 @@ static inline int Mio_CompareTwo2( Mio_Cell2_t * pCell1, Mio_Cell2_t * pCell2 )
     assert( 0 );
     return 0;
 }
+/**Function*************************************************************
+
+  Synopsis    [Collects the set of root gates.]
+
+  Description [Only collects the gates with unique functionality, 
+  which have fewer inputs and shorter delay than the given limits.]
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+static inline int Cad_Mio_CompareTwo2( Mio_Cell2_t * pCell1, Mio_Cell2_t * pCell2, int attri1, int attri2) // return 1 if pCell2 is better
+{
+    int Comp;
+    if(attri1 != -1 && attri2 != -1){
+        int attriNum = ((Mio_Library_t*)Abc_FrameReadLibGen())->cad_attributesNums;
+        assert(attri1 >= 0 && attri1 < attriNum);
+        assert(attri2 >= 0 && attri2 < attriNum);
+        if(pCell1->cad_attris[attri1] > pCell2->cad_attris[attri1])
+            return 1;
+        if(pCell1->cad_attris[attri1] < pCell2->cad_attris[attri1])
+            return 0;
+        if(pCell1->cad_attris[attri2] > pCell2->cad_attris[attri2])
+            return 1;
+        if(pCell1->cad_attris[attri2] < pCell2->cad_attris[attri2])
+            return 0;
+    }
+    // compare areas
+    if ( pCell1->AreaW > pCell2->AreaW )
+        return 1;
+    if ( pCell1->AreaW < pCell2->AreaW )
+        return 0;
+    // compare delays
+    if ( pCell1->iDelayAve > pCell2->iDelayAve )
+        return 1;
+    if ( pCell1->iDelayAve < pCell2->iDelayAve )
+        return 0;
+    // compare names
+    Comp = strcmp( pCell1->pName, pCell2->pName );
+    if ( Comp > 0 )
+        return 1;
+    if ( Comp < 0 )
+        return 0;
+    assert( 0 );
+    return 0;
+}
 static inline void Mio_CollectCopy2( Mio_Cell2_t * pCell, Mio_Gate_t * pGate )
 {
     Mio_Pin_t * pPin;  int k;
+    // size_t cad_attriNums = ((Mio_Library_t *)Abc_FrameReadLibGen())->cad_attributesNums;
+    pCell->cad_attris = pGate->cad_attris;
+    // for(size_t i = 0; i < cad_attriNums; ++i)
+    //     printf("pcell->cad_attris[%d] = %f ",i, pCell->cad_attris[i]);
+    // pCell->attri1    = pGate->attri1;
+    // pCell->attri2    = pGate->attri2;
+    // pCell->attri3    = pGate->attri3;
+    // pCell->attri4    = pGate->attri4;
+    // pCell->attri5    = pGate->attri5;
+    // pCell->attri7    = pGate->attri7;
     pCell->pName     = pGate->pName;
     pCell->vExpr     = pGate->vExpr;
     pCell->uTruth    = pGate->uTruth;
@@ -780,19 +838,24 @@ Mio_Cell2_t * Mio_CollectRootsNew2( Mio_Library_t * pLib, int nInputs, int * pnG
     ppCells  = ABC_CALLOC( Mio_Cell2_t, nGates + 4 );
     // copy all gates first
     ppCells0 = ABC_CALLOC( Mio_Cell2_t, nGates );
-    Mio_LibraryForEachGate( pLib, pGate0 )
+    Mio_LibraryForEachGate( pLib, pGate0 ){
         if ( !(pGate0->nInputs > nInputs || pGate0->pTwin) ) // skip large and multi-output
+        {
             Mio_CollectCopy2( ppCells0 + iCell0++, pGate0 );
+        }
+    }
     assert( iCell0 <= nGates );
     // for each functionality, select gate with the smallest area
     // if equal areas, select gate with smaller average pin delay
     // if these are also equal, select lexicographically smaller name
+    // int attri1 = ((Mio_Library_t*)Abc_FrameReadLibGen())->cad_attri1Index, attri2 = ((Mio_Library_t*)Abc_FrameReadLibGen())->cad_attri2Index;
     for ( pCell = ppCells0; pCell < ppCells0 + iCell0; pCell++ )
     {
         // check if the gate with this functionality already exists
         for ( i = 0; i < iCell; i++ )
             if ( ppCells[i].pName && ppCells[i].uTruth == pCell->uTruth )
             {
+                // if(Cad_Mio_CompareTwo2(ppCells + i, pCell, attri1, attri2))
                 if ( Mio_CompareTwo2( ppCells + i, pCell ) )
                     ppCells[i] = *pCell;
                 break;

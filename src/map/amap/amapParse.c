@@ -400,7 +400,7 @@ int Amap_LibParseEquations( Amap_Lib_t * p, int fVerbose )
     Amap_Pin_t * pPin;
     unsigned * pTruth;
     int i, nPinMax;
-    nPinMax = Amap_LibNumPinsMax(p);
+    nPinMax = Amap_LibNumPinsMax(p); 
     if ( nPinMax > AMAP_MAXINS )
         printf( "Gates with more than %d inputs will be ignored.\n", AMAP_MAXINS );
     vTruth = Vec_IntAlloc( 1 << 16 );
@@ -426,8 +426,13 @@ int Amap_LibParseEquations( Amap_Lib_t * p, int fVerbose )
         if ( pGate->nPins > AMAP_MAXINS )
             continue;
         Vec_PtrClear( vNames );
-        Amap_GateForEachPin( pGate, pPin )
+        Amap_GateForEachPin( pGate, pPin ){
             Vec_PtrPush( vNames, pPin->pName );
+        }
+        // char* mytest;
+        // int kk;
+        // Vec_PtrForEachEntry(char *, vNames, mytest, kk)
+        //     printf("mytest: %s\n", mytest);
         pObj = Amap_ParseFormula( stdout, pGate->pForm, vNames, pMan, pGate->pName );
         if ( pObj == NULL )
             break;

@@ -37,6 +37,7 @@ ABC_NAMESPACE_IMPL_START
 ////////////////////////////////////////////////////////////////////////
 
 static int CmdCommandTime          ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int CmdCommandSleep         ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int CmdCommandEcho          ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int CmdCommandQuit          ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int CmdCommandAbcrc         ( Abc_Frame_t * pAbc, int argc, char ** argv );
@@ -50,7 +51,7 @@ static int CmdCommandUnsetVariable ( Abc_Frame_t * pAbc, int argc, char ** argv 
 static int CmdCommandUndo          ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int CmdCommandRecall        ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int CmdCommandEmpty         ( Abc_Frame_t * pAbc, int argc, char ** argv );
-#if defined(WIN32) && !defined(__cplusplus)
+#if defined(WIN32)
 static int CmdCommandScanDir       ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int CmdCommandRenameFiles   ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int CmdCommandLs            ( Abc_Frame_t * pAbc, int argc, char ** argv );
@@ -90,6 +91,7 @@ void Cmd_Init( Abc_Frame_t * pAbc )
     Cmd_HistoryRead( pAbc );
 
     Cmd_CommandAdd( pAbc, "Basic", "time",          CmdCommandTime,            0 );
+    Cmd_CommandAdd( pAbc, "Basic", "sleep",         CmdCommandSleep,           0 );
     Cmd_CommandAdd( pAbc, "Basic", "echo",          CmdCommandEcho,            0 );
     Cmd_CommandAdd( pAbc, "Basic", "quit",          CmdCommandQuit,            0 );
     Cmd_CommandAdd( pAbc, "Basic", "abcrc",         CmdCommandAbcrc,           0 );
@@ -103,7 +105,7 @@ void Cmd_Init( Abc_Frame_t * pAbc )
     Cmd_CommandAdd( pAbc, "Basic", "undo",          CmdCommandUndo,            0 );
     Cmd_CommandAdd( pAbc, "Basic", "recall",        CmdCommandRecall,          0 );
     Cmd_CommandAdd( pAbc, "Basic", "empty",         CmdCommandEmpty,           0 );
-#if defined(WIN32) && !defined(__cplusplus)
+#if defined(WIN32)
     Cmd_CommandAdd( pAbc, "Basic", "scandir",       CmdCommandScanDir,         0 );
     Cmd_CommandAdd( pAbc, "Basic", "renamefiles",   CmdCommandRenameFiles,     0 );
     Cmd_CommandAdd( pAbc, "Basic", "ls",            CmdCommandLs,              0 );
@@ -228,6 +230,65 @@ int CmdCommandTime( Abc_Frame_t * pAbc, int argc, char **argv )
     return 1;
 }
 
+/**Function********************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+******************************************************************************/
+int CmdCommandSleep( Abc_Frame_t * pAbc, int argc, char **argv )
+{
+    abctime clkStop;
+    char * pFileName = NULL;
+    int c, nSecs = 1;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "Nh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'N':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-N\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nSecs = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nSecs < 0 )
+                goto usage;
+            break;
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+
+    if ( argc == globalUtilOptind + 1 ) {
+        FILE * pFile = NULL;
+        pFileName = argv[globalUtilOptind];
+        while ( (pFile = fopen(pFileName, "rb")) == NULL );
+        if ( pFile != NULL )
+            fclose( pFile );
+    }
+
+    clkStop = Abc_Clock() + nSecs * CLOCKS_PER_SEC;
+    while ( Abc_Clock() < clkStop );
+    return 0;
+
+  usage:
+    fprintf( pAbc->Err, "usage: sleep [-N <num>] [-h] <file_name>\n" );
+    fprintf( pAbc->Err, "\t              puts ABC to sleep for some time\n" );
+    fprintf( pAbc->Err, "\t-N num      : time duration in seconds [default = %d]\n", nSecs );    
+    fprintf( pAbc->Err, "\t-h          : toggle printing the command usage\n" );
+    fprintf( pAbc->Err, "\t<file_name> : (optional) waiting begins after the file is created\n" );    
+    return 1;
+}
 /**Function********************************************************************
 
   Synopsis    []
@@ -1148,7 +1209,7 @@ usage:
 #endif
 
 
-#if defined(WIN32) && !defined(__cplusplus)
+#if defined(WIN32)
 #include <direct.h>
 #include <io.h>
 
@@ -1334,10 +1395,10 @@ int CmfFindNumber( char * pName )
 ***********************************************************************/
 void CnfDupFileUnzip( char * pOldName )
 {
-    extern char * Io_MvLoadFileBz2( char * pFileName, int * pnFileSize );
+    extern char * Io_MvLoadFileBz2( char * pFileName, long * pnFileSize );
     char pNewName[1000];
     FILE * pFile;
-    int nFileSize;
+    long nFileSize;
     char * pBuffer = Io_MvLoadFileBz2( pOldName, &nFileSize );
     assert( strlen(pOldName) < 1000 );
     sprintf( pNewName, "%s.v", pOldName );

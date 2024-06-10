@@ -33,9 +33,13 @@ ABC_NAMESPACE_IMPL_START
 
 static Mio_Library_t * Mio_LibraryReadOne( char * FileName, int fExtendedFormat, st__table * tExcludeGate, int fVerbose );
        Mio_Library_t * Mio_LibraryReadBuffer( char * pBuffer, int fExtendedFormat, st__table * tExcludeGate, int fVerbose );
+       Mio_Library_t * Cad_Mio_LibraryReadBuffer( char * pBuffer, int fExtendedFormat, st__table * tExcludeGate, int fVerbose );
 static int             Mio_LibraryReadInternal( Mio_Library_t * pLib, char * pBuffer, int fExtendedFormat, st__table * tExcludeGate, int fVerbose );
+static int             Cad_Mio_LibraryReadInternal( Mio_Library_t * pLib, char * pBuffer, int fExtendedFormat, st__table * tExcludeGate, int fVerbose );
 static Mio_Gate_t *    Mio_LibraryReadGate( char ** ppToken, int fExtendedFormat );
+static Mio_Gate_t *    Cad_Mio_LibraryReadGate( Mio_Library_t * pLib, char ** ppToken, int fExtendedFormat );
 static Mio_Pin_t *     Mio_LibraryReadPin( char ** ppToken, int fExtendedFormat );
+static Mio_Pin_t *     Cad_Mio_LibraryReadAttribute(Mio_Library_t * pLib, Mio_Gate_t * pGate, char ** ppToken, int fExtendedFormat );
 static char *          chomp( char *s );
 static void            Mio_LibraryDetectSpecialGates( Mio_Library_t * pLib );
 static void            Io_ReadFileRemoveComments( char * pBuffer, int * pnDots, int * pnLines );
@@ -184,6 +188,49 @@ Mio_Library_t * Mio_LibraryReadBuffer( char * pBuffer, int fExtendedFormat, st__
 //Mio_WriteLibrary( stdout, pLib );
     return pLib;
 }
+/**Function*************************************************************
+
+  Synopsis    [Read the genlib type of library.]
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+Mio_Library_t * Cad_Mio_LibraryReadBuffer( char * pBuffer, int fExtendedFormat, st__table * tExcludeGate, int fVerbose )
+{
+    Mio_Library_t * pLib;
+
+    // allocate the genlib structure
+    pLib = ABC_CALLOC( Mio_Library_t, 1 );
+    pLib->tName2Gate = st__init_table(strcmp, st__strhash);
+    pLib->pMmFlex = Mem_FlexStart();
+    pLib->vCube = Vec_StrAlloc( 100 );
+
+    Io_ReadFileRemoveComments( pBuffer, NULL, NULL );
+
+    // parse the contents of the file
+    if ( Cad_Mio_LibraryReadInternal( pLib, pBuffer, fExtendedFormat, tExcludeGate, fVerbose ) )
+    {
+        Mio_LibraryDelete( pLib );
+        return NULL;
+    }
+    // derive the functinality of gates
+    // if ( Mio_LibraryParseFormulas( pLib ) )
+    if ( Cad_Mio_LibraryParseFormulas( pLib ) )
+    {
+        printf( "Mio_LibraryRead: Had problems parsing formulas.\n" );
+        Mio_LibraryDelete( pLib );
+        return NULL;
+    }
+
+    // detect INV and NAND2
+    Mio_LibraryDetectSpecialGates( pLib );
+//Mio_WriteLibrary( stdout, pLib );
+    return pLib;
+}
 
 /**Function*************************************************************
 
@@ -205,9 +252,12 @@ Mio_Library_t * Mio_LibraryReadOne( char * FileName, int fExtendedFormat, st__ta
     // we don't use above function but actually do the same thing explicitly
     // to handle open_path expansion correctly
     pBuffer = Mio_ReadFile( FileName, 1 );
+    // printf("Reading file %s\n", pBuffer);
+    // exit(0);
     if ( pBuffer == NULL )
         return NULL;
-    pLib = Mio_LibraryReadBuffer( pBuffer, fExtendedFormat, tExcludeGate, fVerbose );
+    pLib = Cad_Mio_LibraryReadBuffer( pBuffer, fExtendedFormat, tExcludeGate, fVerbose );
+    // pLib = Mio_LibraryReadBuffer( pBuffer, fExtendedFormat, tExcludeGate, fVerbose );
     ABC_FREE( pBuffer );
     if ( pLib )
         pLib->pName = Abc_UtilStrsav( FileName );
@@ -320,6 +370,128 @@ int Mio_LibraryReadInternal( Mio_Library_t * pLib, char * pBuffer, int fExtended
 
     return 0;
 }
+/**Function*************************************************************
+
+  Synopsis    [Read the genlib type of library.]
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int Cad_Mio_LibraryReadInternal( Mio_Library_t * pLib, char * pBuffer, int fExtendedFormat, st__table * tExcludeGate, int fVerbose )
+{
+    Mio_Gate_t * pGate, ** ppGate;
+    char * pToken;
+    int nGates = 0;
+    int nDel = 0;
+
+    // start the linked list of gates
+    pLib->pGates = NULL;
+    ppGate = &pLib->pGates;
+
+    // read gates one by one
+    // but read cad customized attributes first
+    pToken = strtok( pBuffer, " \t\r\n" );
+    pLib->cad_attributesNums = atoi(pToken);
+    pToken = strtok( NULL, " \t\r\n" );
+    pLib->cad_delayIndex = atoi(pToken);
+    // pToken = strtok( NULL, " \t\r\n" );
+    // pLib->cad_attri1Index = atoi(pToken);
+    // pToken = strtok( NULL, " \t\r\n" );
+    // pLib->cad_attri2Index = atoi(pToken);
+    // printf("cad_attri1Index = %d\n", pLib->cad_attri1Index);
+    // printf("cad_attri2Index = %d\n", pLib->cad_attri2Index);
+    // exit(0);
+    // printf("Reading delay index = %d\n",pLib->cad_delayIndex);
+    // exit(0);
+    pToken = strtok( NULL, " \t\r\n" );
+    while ( pToken && (strcmp( pToken, MIO_STRING_GATE ) == 0 || strcmp( pToken, MIO_STRING_LATCH ) == 0) )
+    {
+        // skip latches
+        if ( strcmp( pToken, MIO_STRING_LATCH ) == 0 )
+        {
+            while ( pToken && strcmp( pToken, MIO_STRING_GATE ) != 0 && strcmp( pToken, ".end" ) != 0 )
+            {
+                if ( strcmp( pToken, MIO_STRING_LATCH ) == 0 )
+                {
+                    pToken = strtok( NULL, " \t\r\n" );
+                    printf( "Skipping latch \"%s\"...\n", pToken );
+                    continue;
+                }
+                pToken = strtok( NULL, " \t\r\n" );
+            }
+            if ( !(pToken && strcmp( pToken, MIO_STRING_GATE ) == 0) )
+                break;
+        }
+
+        // derive the next gate
+        // pGate = Mio_LibraryReadGate( &pToken, fExtendedFormat );
+        pGate = Cad_Mio_LibraryReadGate( pLib, &pToken, fExtendedFormat );
+        // printf("Reading gate %s\n", pGate->pName);
+        if ( pGate == NULL )
+            return 1;
+
+        // skip the gate if its formula has problems
+        // if ( !Mio_ParseCheckFormula(pGate, pGate->pForm) )
+        // {
+        //     Mio_GateDelete( pGate );
+        //     continue;
+        // }
+       
+        // set the library
+        pGate->pLib = pLib;
+
+        // printf ("Processing: '%s'\n", pGate->pName);
+
+        if ( tExcludeGate && st__is_member( tExcludeGate, pGate->pName ) )
+        {
+            //printf ("Excluding: '%s'\n", pGate->pName);
+            Mio_GateDelete( pGate );
+            nDel++;
+        } 
+        else
+        {
+            // add this gate to the list
+            *ppGate = pGate;
+            ppGate  = &pGate->pNext;
+            nGates++;
+
+            // remember this gate by name
+            if ( ! st__is_member( pLib->tName2Gate, pGate->pName ) )
+                st__insert( pLib->tName2Gate, pGate->pName, (char *)pGate );
+            else
+            {
+                Mio_Gate_t * pBase = Mio_LibraryReadGateByName( pLib, pGate->pName, NULL );
+                if ( pBase->pTwin != NULL )
+                {
+                    printf( "Gates with more than 2 outputs are not supported.\n" );
+                    continue;
+                }
+                pBase->pTwin = pGate;
+                pGate->pTwin = pBase;
+//                printf( "Gate \"%s\" appears two times. Creating a 2-output gate.\n", pGate->pName );
+            }
+        }
+    }
+
+    if ( nGates == 0 )
+    {
+        printf( "The library contains no gates.\n" );
+        return 1;
+    }
+
+    // check what is the last word read
+    if ( pToken && strcmp( pToken, ".end" ) != 0 )
+        return 1;
+
+    if ( nDel != 0 ) 
+        printf( "Actually excluded %d cells\n", nDel );
+
+    return 0;
+}
 
 /**Function*************************************************************
 
@@ -358,6 +530,7 @@ char * Mio_LibraryCleanStr( char * p )
 
 Mio_Gate_t * Mio_LibraryReadGate( char ** ppToken, int fExtendedFormat )
 {
+    
     Mio_Gate_t * pGate;
     Mio_Pin_t * pPin, ** ppPin;
     char * pToken = *ppToken;
@@ -396,6 +569,66 @@ Mio_Gate_t * Mio_LibraryReadGate( char ** ppToken, int fExtendedFormat )
     {
         // derive the next gate
         pPin = Mio_LibraryReadPin( &pToken, fExtendedFormat );
+        if ( pPin == NULL )
+        {
+            Mio_GateDelete( pGate );
+            *ppToken = pToken;
+            return NULL;
+        }
+        // add this pin to the list
+        *ppPin = pPin;
+        ppPin  = &pPin->pNext;
+        // get the next token
+        pToken = strtok( NULL, " \t\r\n" );
+    }
+
+    *ppToken = pToken;
+    return pGate;
+}
+Mio_Gate_t * Cad_Mio_LibraryReadGate( Mio_Library_t * pLib, char ** ppToken, int fExtendedFormat )
+{
+    
+    Mio_Gate_t * pGate;
+    Mio_Pin_t * pPin, ** ppPin;
+    char * pToken = *ppToken;
+
+    // allocate the gate structure
+    pGate = ABC_CALLOC( Mio_Gate_t, 1 );
+    pGate->Cell = -1;
+    // set cad attributes array
+    pGate->cad_attris = ABC_CALLOC(float, pLib->cad_attributesNums);
+    // read the name
+    pToken = strtok( NULL, " \t\r\n" );
+    pGate->pName = Abc_UtilStrsav( pToken );
+
+    // read the area
+    pToken = strtok( NULL, " \t\r\n" );
+    pGate->dArea = atof( pToken );
+
+    // read the formula
+
+    // first the output name
+    pToken = strtok( NULL, "=" );
+    pGate->pOutName = chomp( pToken );
+
+    // then rest of the expression 
+    pToken = strtok( NULL, ";" );
+//    pGate->pForm = Mio_LibraryCleanStr( pToken );
+    pGate->pForm = Abc_UtilStrsav( pToken );
+
+    // read the pin info
+    // start the linked list of pins
+    pGate->pPins = NULL;
+    ppPin = &pGate->pPins;
+
+    // read gates one by one
+    pToken = strtok( NULL, " \t\r\n" );
+    while ( pToken && strcmp( pToken, MIO_STRING_PIN ) == 0 )
+    {
+        // derive the next gate
+        // pPin = Mio_LibraryReadPin( &pToken, fExtendedFormat );
+        pPin = Cad_Mio_LibraryReadAttribute(pLib, pGate, &pToken, fExtendedFormat);
+        // printf("PIN name = %s\n", pPin->pName);
         if ( pPin == NULL )
         {
             Mio_GateDelete( pGate );
@@ -491,6 +724,149 @@ Mio_Pin_t * Mio_LibraryReadPin( char ** ppToken, int fExtendedFormat )
         pPin->dDelayBlockMax = pPin->dDelayBlockRise;
     else
         pPin->dDelayBlockMax = pPin->dDelayBlockFall;
+
+    *ppToken = pToken;
+    return pPin;
+}
+/**Function*************************************************************
+
+  Synopsis    [Read the genlib type of pin.]
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+Mio_Pin_t * Cad_Mio_LibraryReadAttribute(Mio_Library_t * pLib, Mio_Gate_t * pGate, char ** ppToken, int fExtendedFormat )
+{
+    Mio_Pin_t * pPin;
+    char * pToken = *ppToken;
+
+    // allocate the gate structure
+    pPin = ABC_CALLOC( Mio_Pin_t, 1 );
+
+    // read the name
+    pToken = strtok( NULL, " \t\r\n" );
+    pPin->pName = Abc_UtilStrsav( pToken );
+    // read the pin phase
+    pToken = strtok( NULL, " \t\r\n" );
+    if ( strcmp( pToken, MIO_STRING_UNKNOWN ) == 0 )
+        pPin->Phase = MIO_PHASE_UNKNOWN;
+    else if ( strcmp( pToken, MIO_STRING_INV ) == 0 )
+        pPin->Phase = MIO_PHASE_INV;
+    else if ( strcmp( pToken, MIO_STRING_NONINV ) == 0 )
+        pPin->Phase = MIO_PHASE_NONINV;
+    else 
+    {
+        printf( "Cannot read pin phase specification\n" );
+        Mio_PinDelete( pPin );
+        *ppToken = pToken;
+        return NULL;
+    }
+    pToken = strtok( NULL, " \t\r\n" );
+    // printf("%s\n", pToken);
+    // exit(0);
+    int attri_index = 0;
+    if(strcmp(pToken, ";") != 0){
+        // read the attributes
+        // pToken = strtok( NULL, " \t\r\n" );
+        // printf("pToken = %s\n", pToken);
+        pGate->cad_attris[0] = atof( pToken );
+        for(int kk = 1, nk = pLib->cad_attributesNums; kk < nk; kk++){
+            pToken = strtok( NULL, " \t\r\n" );
+            // printf("pToken = %s\n", pToken);
+            pGate->cad_attris[kk] = atof( pToken );
+        }
+        // pGate->attri1 = atof( pToken );
+        // pToken = strtok( NULL, " \t\r\n" );
+        // pGate->attri2 = atof( pToken );
+        // pToken = strtok( NULL, " \t\r\n" );
+        // pGate->attri3 = atoi( pToken );
+        // pToken = strtok( NULL, " \t\r\n" );
+        // pGate->attri4 = atof( pToken );
+        // pToken = strtok( NULL, " \t\r\n" );
+        // pGate->attri5 = atof( pToken );
+        // pToken = strtok( NULL, " \t\r\n" );
+        // pGate->attri7 = atof( pToken );
+    }
+    // pGate->attri1 = pGate->cad_attris[attri_index++];
+    // pGate->attri2 = pGate->cad_attris[attri_index++];
+    // pGate->attri3 = pGate->cad_attris[attri_index++];
+    // pGate->attri4 = pGate->cad_attris[attri_index++];
+    // pGate->attri5 = pGate->cad_attris[attri_index++];
+    // pGate->attri7 = pGate->cad_attris[attri_index++];
+    // // read the pin phase
+    // pToken = strtok( NULL, " \t\r\n" );
+    // if ( strcmp( pToken, MIO_STRING_UNKNOWN ) == 0 )
+    //     pPin->Phase = MIO_PHASE_UNKNOWN;
+    // else if ( strcmp( pToken, MIO_STRING_INV ) == 0 )
+    //     pPin->Phase = MIO_PHASE_INV;
+    // else if ( strcmp( pToken, MIO_STRING_NONINV ) == 0 )
+    //     pPin->Phase = MIO_PHASE_NONINV;
+    // else 
+    // {
+    //     printf( "Cannot read pin phase specification\n" );
+    //     Mio_PinDelete( pPin );
+    //     *ppToken = pToken;
+    //     return NULL;
+    // }
+    pPin->dLoadInput = 1;
+    pPin->dLoadMax = 999;
+    if(pLib->cad_delayIndex < pLib->cad_attributesNums && pLib->cad_delayIndex < pLib->cad_attributesNums >= 0){
+        float tmp = pGate->cad_attris[pLib->cad_delayIndex];
+        pPin->dDelayBlockRise = tmp;
+        pPin->dDelayFanoutRise = tmp / 2;
+        pPin->dDelayBlockFall =  tmp;
+        pPin->dDelayFanoutFall =  tmp / 2;
+        pPin->dDelayBlockMax = tmp;
+    }
+    else{
+        pPin->dDelayBlockRise = 0.9;
+        pPin->dDelayFanoutRise = 0.3;
+        pPin->dDelayBlockFall =  0.9;
+        pPin->dDelayFanoutFall =  0.3;
+        pPin->dDelayBlockMax = 0.9;
+    }
+    
+    // pToken = strtok( NULL, " \t\r\n" );
+    // pPin->dLoadInput = atof( pToken );
+
+    // pToken = strtok( NULL, " \t\r\n" );
+    // pPin->dLoadMax = atof( pToken );
+
+    // pToken = strtok( NULL, " \t\r\n" );
+    // pPin->dDelayBlockRise = atof( pToken );
+
+    // pToken = strtok( NULL, " \t\r\n" );
+    // pPin->dDelayFanoutRise = atof( pToken );
+
+    // pToken = strtok( NULL, " \t\r\n" );
+    // pPin->dDelayBlockFall = atof( pToken );
+
+    // pToken = strtok( NULL, " \t\r\n" );
+    // pPin->dDelayFanoutFall = atof( pToken );
+
+    // if ( fExtendedFormat )
+    // {
+    //     /* In extended format, the field after dDelayFanoutRise
+    //      * is to be ignored
+    //      **/
+
+    //     pPin->dDelayBlockFall  = pPin->dDelayFanoutFall;
+
+    //     pToken = strtok( NULL, " \t" );
+    //     pPin->dDelayFanoutFall = atof( pToken );
+
+    //     /* last field is ignored */
+    //     pToken = strtok( NULL, " \t\r\n" );
+    // }
+
+    // if ( pPin->dDelayBlockRise > pPin->dDelayBlockFall )
+    //     pPin->dDelayBlockMax = pPin->dDelayBlockRise;
+    // else
+    //     pPin->dDelayBlockMax = pPin->dDelayBlockFall;
 
     *ppToken = pToken;
     return pPin;
