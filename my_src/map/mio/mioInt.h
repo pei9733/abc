@@ -94,8 +94,18 @@ struct  Mio_LibraryStruct_t_
     // cad attributes
     int     cad_attributesNums;
     int     cad_delayIndex; // which attribute to use as the delay
+<<<<<<< HEAD
     // int     cad_attri1Index; // the first priority attribute use for comparison in Cad_Mio_CompareTwo2
     // int     cad_attri2Index; // the second priority attribute use for comparison in Cad_Mio_CompareTwo2
+=======
+<<<<<<< HEAD
+    // int     cad_attri1Index; // the first priority attribute use for comparison in Cad_Mio_CompareTwo2
+    // int     cad_attri2Index; // the second priority attribute use for comparison in Cad_Mio_CompareTwo2
+=======
+    int     cad_attri1Index; // the first priority attribute use for comparison in Cad_Mio_CompareTwo2
+    int     cad_attri2Index; // the second priority attribute use for comparison in Cad_Mio_CompareTwo2
+>>>>>>> e5d730fb227e4e479071ab70932da3b6358366ab
+>>>>>>> dd0cbfe5ea3a7d5cc4898c5e8ceea8687e41a532
 }; 
 
 struct  Mio_GateStruct_t_

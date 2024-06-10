@@ -59,12 +59,27 @@ struct Mio_Cell2_t_
 {   
     // cad attributes
     float*             cad_attris;
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> dd0cbfe5ea3a7d5cc4898c5e8ceea8687e41a532
     // float              attri1;
     // float              attri2;
     // int                attri3;
     // float              attri4;
     // float              attri5;
     // float              attri7;
+<<<<<<< HEAD
+=======
+=======
+    float              attri1;
+    float              attri2;
+    int                attri3;
+    float              attri4;
+    float              attri5;
+    float              attri7;
+>>>>>>> e5d730fb227e4e479071ab70932da3b6358366ab
+>>>>>>> dd0cbfe5ea3a7d5cc4898c5e8ceea8687e41a532
 
     // orginal data member
     char *          pName;          // name
